@@ -26,6 +26,8 @@ const int blueLedPin = 11;
 const int rotaryDelay = 10;
 // delay/debounce in ms for reading the rotary switch button presses
 const int rotarySwitchDebounce = 100;
+// how much to adjust the value when moving rotary dial one notch
+const int rotaryUnits = 3;
 
 // variables
 // rotary dial position
@@ -68,8 +70,8 @@ void changeMode () {
   // get time now
   long now = micros();
   // calculate 125ms delay in microseconds for debounce
-  long delay = 1000L * 125L;
-  if (now > lastRotarySwitchMicros + delay) {
+  long debounce = 1000L * 125L;
+  if (now > lastRotarySwitchMicros + debounce) {
     // valid button press
     // store current mode as last mode
     lastMode = mode;
@@ -106,8 +108,13 @@ void setup() {
   // writeI2CByte(0, 44);
   // get max brightness value from eeprom
   maxBright = readI2CByte(0);
-  Serial.print("maxBright from EEPROM is ");
-  Serial.println(maxBright);
+  currentBrightness = readI2CByte(0);
+  redValue = readI2CByte(1);
+  greenValue = readI2CByte(2);
+  blueValue = readI2CByte(3);
+
+  // Serial.print("maxBright from EEPROM is ");
+  // Serial.println(maxBright);
   // set rotary dial pin modes
   pinMode(rotaryClockPin, INPUT);
   pinMode(rotaryDirectionPin, INPUT);
@@ -131,22 +138,61 @@ void setup() {
 
 void loop() {
   // was the mode changed?
-  // leaving adjust brightness mode?
   if (lastMode != mode) {
     // mode was changed
     // was the last mode adjust brightness?
     if (lastMode == 1) {
       // update max brightness setting in EEPROM
-      writeI2CByte(0, maxBright);
+      writeI2CByte(0, currentBrightness);
+      // blink red for feedback that we are now editing red
+      setLights(currentBrightness, 255, 0, 0);
+      delay(300);
+      setLights();
+      delay(150);
+      setLights(currentBrightness, 255, 0, 0);
+      delay(300);
+      setLights();
     } else if (lastMode == 2) {
       // update red value
       writeI2CByte(1, redValue);
+      // blink green for feedback that we are now editing green
+      setLights(currentBrightness, 0, 255, 0);
+      delay(300);
+      setLights();
+      delay(150);
+      setLights(currentBrightness, 0, 255, 0);
+      delay(300);
+      setLights();
     } else if (lastMode == 3) {
       // update green value
       writeI2CByte(2, greenValue);
+      // blink blue for feedback that we are now editing blue
+      setLights(currentBrightness, 0, 0, 255);
+      delay(300);
+      setLights();
+      delay(150);
+      setLights(currentBrightness, 0, 0, 255);
+      delay(300);
+      setLights();
     } else if (lastMode == 4) {
       // update blue value
       writeI2CByte(3, blueValue);
+      // blink all for feedback that we are done editing
+      setLights(currentBrightness, 0, 0, 0);
+      delay(150);
+      setLights();
+      delay(300);
+      setLights(currentBrightness, 0, 0, 0);
+      delay(150);
+      setLights();
+      delay(300);
+      setLights(currentBrightness, 0, 0, 0);
+      delay(150);
+      setLights();
+      delay(300);
+      setLights(currentBrightness, 0, 0, 0);
+      delay(150);
+      setLights();
     }
     // update lastMode to the current one
     lastMode = mode;
@@ -168,6 +214,7 @@ void loop() {
     setLights();
   } else if (mode == 2) {
     // adjust red
+    // delay(100);
     // set rotary value to the value of current color index
     rotaryValue = redValue;
     // set max rotary value
@@ -175,7 +222,7 @@ void loop() {
     rotaryMax = 255;
     // check rotary position
     readRotary();
-    // set color index to rotary value
+    // set red color value from rotary value
     redValue = rotaryValue;
     // update lights
     setLights();
@@ -188,7 +235,7 @@ void loop() {
     rotaryMax = 255;
     // check rotary position
     readRotary();
-    // set color index to rotary value
+    // set green color value to rotary value
     greenValue = rotaryValue;
     // update lights
     setLights();
@@ -201,7 +248,7 @@ void loop() {
     rotaryMax = 255;
     // check rotary position
     readRotary();
-    // set color index to rotary value
+    // set blue color value to rotary value
     blueValue = rotaryValue;
     // update lights
     setLights();
@@ -212,9 +259,17 @@ void loop() {
   }
 }
 
+void setLights (int h, int r, int g, int b) {
+  // set LED values
+  float brightness = (h / 255.0);
+  analogWrite(redLedPin, brightness * r);
+  analogWrite(greenLedPin, brightness * g);
+  analogWrite(blueLedPin, brightness * b);
+}
+
 void setLights () {
   // set LED values
-  float brightness = (currentBrightness / 255);
+  float brightness = (currentBrightness / 255.0);
   analogWrite(redLedPin, brightness * redValue);
   analogWrite(greenLedPin, brightness * greenValue);
   analogWrite(blueLedPin, brightness * blueValue);
@@ -269,14 +324,14 @@ void readRotary( ) {
     if (digitalRead(rotaryDirectionPin) == HIGH) {
       // backward/left/counter-clockwise
       // Serial.println("rotary dial left");
-      rotaryValue = rotaryValue - 1;
+      rotaryValue -= rotaryUnits;
       if ( rotaryValue < 0 ) {
         rotaryValue = 0;
       }
     } else {
       // forward/right/clockwise
       // Serial.println("rotary dial right");
-      rotaryValue++;
+      rotaryValue += rotaryUnits;
       if ( rotaryValue > rotaryMax ) {
         rotaryValue = rotaryMax;
       }
