@@ -22,8 +22,6 @@ const int redLedPin = 9;
 const int greenLedPin = 10;
 // blue color pin
 const int blueLedPin = 11;
-// maximum rotary value
-const int rotaryMax = 255;
 // delay/debounce in ms for reading the rotary position data
 const int rotaryDelay = 10;
 // delay/debounce in ms for reading the rotary switch button presses
@@ -32,6 +30,8 @@ const int rotarySwitchDebounce = 100;
 // variables
 // rotary dial position
 int rotaryValue = 0;
+// maximum rotary value
+int rotaryMax = 255;
 // rotary dial clock state
 bool rotaryClockState = LOW;
 // rotary dial last clock state
@@ -46,10 +46,17 @@ long lastRotarySwitchMicros = 0L;
 // bool rotaryDirection = HIGH;
 // the current max brightness for the LEDs
 int maxBright = 180;
+// color set index
+int colorIndex = 4;
+
+float redMultiplier = 1.0;
+float greenMultiplier = 2.0/5;
+float blueMultiplier = 0;
 
 // volatile vars, shared between interrupt routines and main routine
 // what mode we are currently in. 0 = normal, 1 = adjust brightness, 2 = adjust color
 volatile int mode = 0;
+volatile int lastMode = 0;
 
 // interrupt function to change modes when rotary switch is pressed
 void changeMode () {
@@ -59,18 +66,16 @@ void changeMode () {
   long delay = 1000L * 125L;
   if (now > lastRotarySwitchMicros + delay) {
     // valid button press
-    // leaving adjust brightness mode?
-    if (mode == 1) {
-      // save brightness setting in EEPROM
-      writeI2CByte(0, maxBright);
-    }
+    // store current mode as last mode
+    lastMode = mode;
     // change mode from 0 -> 1 -> 2 -> 0 -> 1 etc...
-    if (mode == 2) {
+    const int maxModes = 2;
+    if (mode == maxModes) {
       mode = 0;
     } else {
       mode++;
     }
-    Serial.print("changing modes to ");
+    Serial.print("changing mode to ");
     Serial.println(mode);
     // set last press time to now
     lastRotarySwitchMicros = now;
@@ -92,6 +97,8 @@ void setup() {
   // start i2c
   Wire.begin();
   Serial.println("I2C started");
+  // test
+  // writeI2CByte(0, 44);
   // get max brightness value from eeprom
   maxBright = readI2CByte(0);
   Serial.print("maxBright from EEPROM is ");
@@ -118,6 +125,23 @@ void setup() {
 }
 
 void loop() {
+  // was the mode changed?
+  // leaving adjust brightness mode?
+  if (lastMode != mode) {
+    // mode was changed
+    // was the last mode adjust brightness?
+    if (lastMode == 1) {
+      // update max brightness setting in EEPROM
+      writeI2CByte(0, maxBright);
+    } else if (lastMode == 2) {
+      // update green multiplier
+      // writeI2CByte(1, redMultiplier)
+      writeI2CByte(2, greenMultiplier);
+      // writeI2CByte(3, blueMultiplier)
+    }
+    // update lastMode to the current one
+    lastMode = mode;
+  }
   // check the mode
   if (mode == 0) {
     // normal mode
@@ -125,25 +149,39 @@ void loop() {
     // delay(3000);
     // closeDoor();
     // delay(3000);
-    analogWrite(redLedPin, maxBright*2/2);
-    analogWrite(greenLedPin, maxBright*2/5);
-    analogWrite(blueLedPin, 0);
+    // analogWrite(redLedPin, maxBright * 2/2);
+    // analogWrite(greenLedPin, maxBright * 2/5);
+    // analogWrite(blueLedPin, 0);
+    setLights();
   } else if (mode == 1) {
     // adjust brightness
     // set rotary value to the value of current max brightness
     rotaryValue = maxBright;
+    // set max rotary size
+    rotaryMax = 255;
     // check rotary position
     readRotary();
     // set maxBright to rotary value
     maxBright = rotaryValue;
     // Serial.print("Rotary position ");
-    // Serial.println(rotaryValue);
-    // set LEDs to max brightness
-    analogWrite(redLedPin, maxBright*2/2);
-    analogWrite(greenLedPin, maxBright*2/5);
-    analogWrite(blueLedPin, 0);
+    // // Serial.println(rotaryValue);
+    // analogWrite(redLedPin, maxBright * 2/2);
+    // analogWrite(greenLedPin, maxBright * 2/5);
+    // analogWrite(blueLedPin, 0);
+    setLights();
   } else if (mode == 2) {
     // adjust color
+    // set rotary value to the value of current color index
+    rotaryValue = greenMultiplier * 100;
+    // set max rotary value
+    // rotaryMax = colorMultipliers;
+    rotaryMax = 99;
+    // check rotary position
+    readRotary();
+    // set color index to rotary value
+    greenMultiplier = rotaryValue / 100.0;
+    // set the light colorMultipliers
+    setLights();
   } else {
     // oops! should not be here!
     // reset mode to 0!
@@ -173,20 +211,31 @@ void loop() {
   // this is the red wire
 }
 
+void setLights () {
+  // set LED values
+  // analogWrite(redLedPin, maxBright * 1);
+  // analogWrite(greenLedPin, maxBright * 2/5);
+  // analogWrite(blueLedPin, maxBright * 0);
+
+  analogWrite(redLedPin, maxBright * redMultiplier);
+  analogWrite(greenLedPin, maxBright * greenMultiplier);
+  analogWrite(blueLedPin, maxBright * blueMultiplier);
+}
+
 void openDoor () {
-  for(int i=0; i<maxBright*2; i++){
-    analogWrite(redLedPin, i/2);
-    analogWrite(greenLedPin, i/5);
-    analogWrite(blueLedPin, 0);
+  for(int i=0; i<maxBright; i++){
+    analogWrite(redLedPin, i * redMultiplier);
+    analogWrite(greenLedPin, i * greenMultiplier);
+    analogWrite(blueLedPin, i * blueMultiplier);
     delay(5);
   }
 }
 
 void closeDoor () {
-  for(int i=maxBright*2; i>0; i--){
-    analogWrite(redLedPin, i/2);
-    analogWrite(greenLedPin, i/5);
-    analogWrite(blueLedPin, 0);
+  for(int i=maxBright; i>0; i--){
+    analogWrite(redLedPin, i * redMultiplier);
+    analogWrite(greenLedPin, i * greenMultiplier);
+    analogWrite(blueLedPin, i * blueMultiplier);
     delay(5);
   }
 
