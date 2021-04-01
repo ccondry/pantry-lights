@@ -63,7 +63,7 @@ float greenMultiplier = 2.0/5;
 float blueMultiplier = 0;
 
 // timer for when user has started setting the settings, but did not continue
-unsigned long idleTimer = 0L;
+volatile unsigned long idleTimer = 0L;
 
 // volatile vars, shared between interrupt routines and main routine
 // what mode we are currently in. 0 = normal, 1 = adjust brightness, 2 = adjust color
@@ -74,6 +74,8 @@ volatile int lastMode = 0;
 void changeMode () {
   // get time now in milliseconds
   unsigned long now = millis();
+  // reset the idle timer
+  idleTimer = now;
   // calculate 125ms delay in microseconds for debounce
   long debounce = 125L;
   if (now > lastRotarySwitchMicros + debounce) {
