@@ -3,9 +3,9 @@
 
 // the address setting of the eeprom chip
 // bit order is A2, A1, A0
-#define ADDR_Ax 0b000
+#define EEPROM_ADDRESS_SETTING 0b000
 // make the full address byte for i2c to communicate with the eeprom chip
-#define EEPROM_ADDRESS (0b1010 << 3) + ADDR_Ax
+#define EEPROM_ADDRESS (0b1010 << 3) + EEPROM_ADDRESS_SETTING
 
 // constants
 // rotary dial clock pin
@@ -41,7 +41,7 @@ bool rotarySwitchState = HIGH;
 // rotary dial switch last state
 bool rotarySwitchLastState = HIGH;
 // last time the switch was pressed
-long lastRotarySwitchMicros = 0;
+long lastRotarySwitchMicros = 0L;
 // last rotary dial direction - high for forward (clockwise), low for backward (counter-clockwise)
 // bool rotaryDirection = HIGH;
 // the current max brightness for the LEDs
@@ -53,14 +53,17 @@ volatile int mode = 0;
 
 // interrupt function to change modes when rotary switch is pressed
 void changeMode () {
-  Serial.print("changeMode interrupt at ");
-  Serial.println(micros());
-  lastRotarySwitchMicros = micros();
-  // debounce 500ms
-  if (lastRotarySwitchMicros < micros() - 1000 * 500) {
-    // continue
-    // save current maxBrightness to eeprom
-    writeI2CByte(0, maxBright);
+  // get time now
+  long now = micros();
+  // calculate 125ms delay in microseconds for debounce
+  long delay = 1000L * 125L;
+  if (now > lastRotarySwitchMicros + delay) {
+    // valid button press
+    // leaving adjust brightness mode?
+    if (mode == 1) {
+      // save brightness setting in EEPROM
+      writeI2CByte(0, maxBright);
+    }
     // change mode from 0 -> 1 -> 2 -> 0 -> 1 etc...
     if (mode == 2) {
       mode = 0;
@@ -69,8 +72,8 @@ void changeMode () {
     }
     Serial.print("changing modes to ");
     Serial.println(mode);
-  } else {
-    // debounce
+    // set last press time to now
+    lastRotarySwitchMicros = now;
   }
 }
 
@@ -84,24 +87,27 @@ void detectDoor () {
 void setup() {
   // init serial output
   Serial.begin(9600);
-  // start i2c
-  Wire.begin();
-  // get max brightness value from eeprom
-  maxBright = readI2CByte(0);
   // hello
   Serial.println("Pantry Lights System Activated");
+  // start i2c
+  Wire.begin();
+  Serial.println("I2C started");
+  // get max brightness value from eeprom
+  maxBright = readI2CByte(0);
+  Serial.print("maxBright from EEPROM is ");
+  Serial.println(maxBright);
   // set rotary dial pin modes
-  pinMode(rotaryClockPin,INPUT);
-  pinMode(rotaryDirectionPin,INPUT);
+  pinMode(rotaryClockPin, INPUT);
+  pinMode(rotaryDirectionPin, INPUT);
   // rotary dial switch needs pullup
-  pinMode(rotarySwitchPin,INPUT_PULLUP);
+  pinMode(rotarySwitchPin, INPUT_PULLUP);
   // Declaring red LED pin as output
   pinMode(redLedPin, OUTPUT);
   // Declaring green LED pin as output
   pinMode(greenLedPin, OUTPUT);
   // Declaring blue LED pin as output
   pinMode(blueLedPin, OUTPUT);
-  // interrupt when rotary switch pin is pressed
+  // interrupt when rotary switch button is pressed
   attachInterrupt(digitalPinToInterrupt(rotarySwitchPin), changeMode, FALLING);
   // interrupt when hall effect sensor detects change
   // attachInterrupt(digitalPinToInterrupt(hallSensorPin), detectDoor, RISING);
@@ -115,10 +121,13 @@ void loop() {
   // check the mode
   if (mode == 0) {
     // normal mode
-    openDoor();
+    // openDoor();
     // delay(3000);
-    closeDoor();
+    // closeDoor();
     // delay(3000);
+    analogWrite(redLedPin, maxBright*2/2);
+    analogWrite(greenLedPin, maxBright*2/5);
+    analogWrite(blueLedPin, 0);
   } else if (mode == 1) {
     // adjust brightness
     // set rotary value to the value of current max brightness
@@ -225,8 +234,8 @@ void readRotary( ) {
         rotaryValue = rotaryMax;
       }
     }
-    // Serial.print("Rotary position ");
-    // Serial.println(rotaryValue);
+    Serial.print("Rotary position ");
+    Serial.println(rotaryValue);
   }
   rotaryClockLastState = rotaryClockState;
   // //gestion bouton
@@ -239,11 +248,21 @@ void readRotary( ) {
 }
 
 // this function writes a byte to the i2c eeprom
-void writeI2CByte(byte dataAddress, byte data){
+void writeI2CByte (byte dataAddress, byte data) {
+  Serial.print("writing ");
+  Serial.print(data);
+  Serial.print(" to EEPROM address ");
+  Serial.println(dataAddress);
+  // wait for serial message  to flush??
+  delay(100);
+  // send I2C message for EEPROM to save data
   Wire.beginTransmission(EEPROM_ADDRESS);
   Wire.write(dataAddress);
   Wire.write(data);
   Wire.endTransmission();
+  // wait for data to be sent?
+  delay(100);
+  // log
   Serial.print("wrote ");
   Serial.print(data);
   Serial.print(" to EEPROM address ");
@@ -269,9 +288,9 @@ byte readI2CByte(byte dataAddress) {
   if (Wire.available()) {
     data = Wire.read();
   }
-  Serial.print("read ");
-  Serial.print(data);
-  Serial.print(" from EEPROM address ");
-  Serial.println(dataAddress);
+  // Serial.print("read ");
+  // Serial.print(data);
+  // Serial.print(" from EEPROM address ");
+  // Serial.println(dataAddress);
   return data;
 }
