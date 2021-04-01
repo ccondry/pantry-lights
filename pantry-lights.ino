@@ -89,8 +89,18 @@ void changeMode () {
     } else {
       mode++;
     }
-    Serial.print("changing mode to ");
-    Serial.println(mode);
+    Serial.print("Changing mode to ");
+    if (mode == 0) {
+      Serial.println("normal operation.");
+    } else if (mode == 1) {
+      Serial.println("brightness control.");
+    } else if (mode == 2) {
+      Serial.println("red control.");
+    } else if (mode == 3) {
+      Serial.println("green control.");
+    } else if (mode == 4) {
+      Serial.println("blue control.");
+    }
     // set last press time to now
     lastRotarySwitchMicros = now;
   }
@@ -120,7 +130,17 @@ void setup() {
   greenValue = readI2CByte(2);
   blueValue = readI2CByte(3);
 
-  // Serial.print("maxBright from EEPROM is ");
+  Serial.println("Loaded EEPROM values over I2C:");
+  Serial.print("brightness: ");
+  Serial.print(currentBrightness);
+  Serial.print(", red: ");
+  Serial.print(redValue);
+  Serial.print(", green: ");
+  Serial.print(greenValue);
+  Serial.print(", blue: ");
+  Serial.print(blueValue);
+  Serial.println("");
+
   // Serial.println(maxBright);
   // set rotary dial pin modes
   pinMode(rotaryClockPin, INPUT);
@@ -147,6 +167,7 @@ void setup() {
 // blink all lights for feedback that we are done editing
 void exitSettings () {
   // set mode to normal running
+  Serial.println("Changing mode to normal operation.");
   mode = 0;
   // reset lastMode
   lastMode = 0;
@@ -182,6 +203,7 @@ void loop() {
     unsigned long now = millis();
     // has the user been idle in the settings menu longer than 10 seconds?
     if (now > 10 * 1000 && now - 10 * 1000 > idleTimer) {
+      Serial.println("User idle timer reached.");
       // user is idle - exit settings mode
       exitSettings();
     }
@@ -205,6 +227,8 @@ void loop() {
       // was the last mode adjust brightness?
       // update max brightness setting in EEPROM
       writeI2CByte(0, currentBrightness);
+      Serial.print("Updated brightness value in EEPROM to ");
+      Serial.println(currentBrightness);
       // blink red for feedback that we are now editing red
       setLights(currentBrightness, 255, 0, 0);
       delay(300);
@@ -216,6 +240,8 @@ void loop() {
     } else if (lastMode == 2) {
       // update red value
       writeI2CByte(1, redValue);
+      Serial.print("Updated red value in EEPROM to ");
+      Serial.println(redValue);
       // blink green for feedback that we are now editing green
       setLights(currentBrightness, 0, 255, 0);
       delay(300);
@@ -227,6 +253,8 @@ void loop() {
     } else if (lastMode == 3) {
       // update green value
       writeI2CByte(2, greenValue);
+      Serial.print("Updated green value in EEPROM to ");
+      Serial.println(greenValue);
       // blink blue for feedback that we are now editing blue
       setLights(currentBrightness, 0, 0, 255);
       delay(300);
@@ -238,6 +266,8 @@ void loop() {
     } else if (lastMode == 4) {
       // update blue value
       writeI2CByte(3, blueValue);
+      Serial.print("Updated blue value in EEPROM to ");
+      Serial.println(blueValue);
       exitSettings();
     }
     // update lastMode to the current one
@@ -401,8 +431,8 @@ void readRotary () {
         rotaryValue = rotaryMax;
       }
     }
-    Serial.print("Rotary position ");
-    Serial.println(rotaryValue);
+    // Serial.print("Rotary position ");
+    // Serial.println(rotaryValue);
   }
   rotaryClockLastState = rotaryClockState;
   // //gestion bouton
@@ -416,10 +446,10 @@ void readRotary () {
 
 // this function writes a byte to the i2c eeprom
 void writeI2CByte (byte dataAddress, byte data) {
-  Serial.print("writing ");
-  Serial.print(data);
-  Serial.print(" to EEPROM address ");
-  Serial.println(dataAddress);
+  // Serial.print("writing ");
+  // Serial.print(data);
+  // Serial.print(" to EEPROM address ");
+  // Serial.println(dataAddress);
   // wait for serial message  to flush??
   delay(100);
   // send I2C message for EEPROM to save data
@@ -430,10 +460,10 @@ void writeI2CByte (byte dataAddress, byte data) {
   // wait for data to be sent?
   delay(100);
   // log
-  Serial.print("wrote ");
-  Serial.print(data);
-  Serial.print(" to EEPROM address ");
-  Serial.println(dataAddress);
+  // Serial.print("wrote ");
+  // Serial.print(data);
+  // Serial.print(" to EEPROM address ");
+  // Serial.println(dataAddress);
   // wait for transmission to be received
   delay(5);
 }
