@@ -34,6 +34,8 @@ const int rotaryUnits = 3;
 int rotaryValue = 0;
 // maximum rotary value
 int rotaryMax = 255;
+// minimum rotary value
+int rotaryMin = 0;
 // rotary dial clock state
 bool rotaryClockState = LOW;
 // rotary dial last clock state
@@ -43,7 +45,7 @@ bool rotarySwitchState = HIGH;
 // rotary dial switch last state
 bool rotarySwitchLastState = HIGH;
 // last time the switch was pressed
-long lastRotarySwitchMicros = 0L;
+unsigned long lastRotarySwitchMicros = 0L;
 // last rotary dial direction - high for forward (clockwise), low for backward (counter-clockwise)
 // bool rotaryDirection = HIGH;
 // the current max brightness for the LEDs
@@ -60,6 +62,9 @@ float redMultiplier = 1.0;
 float greenMultiplier = 2.0/5;
 float blueMultiplier = 0;
 
+// timer for when user has started setting the settings, but did not continue
+unsigned long idleTimer = 0L;
+
 // volatile vars, shared between interrupt routines and main routine
 // what mode we are currently in. 0 = normal, 1 = adjust brightness, 2 = adjust color
 volatile int mode = 0;
@@ -67,10 +72,10 @@ volatile int lastMode = 0;
 
 // interrupt function to change modes when rotary switch is pressed
 void changeMode () {
-  // get time now
-  long now = micros();
+  // get time now in milliseconds
+  unsigned long now = millis();
   // calculate 125ms delay in microseconds for debounce
-  long debounce = 1000L * 125L;
+  long debounce = 125L;
   if (now > lastRotarySwitchMicros + debounce) {
     // valid button press
     // store current mode as last mode
@@ -132,16 +137,70 @@ void setup() {
   // attachInterrupt(digitalPinToInterrupt(hallSensorPin), detectDoor, RISING);
   // start with all LEDs off
   allOff();
+  delay(1000);
   // open the door to the pantry
-  // openDoor();
+  openDoor();
+}
+
+// blink all lights for feedback that we are done editing
+void exitSettings () {
+  // set mode to normal running
+  mode = 0;
+  // reset lastMode
+  lastMode = 0;
+  // turn off all lights
+  setLights(currentBrightness, 0, 0, 0);
+  delay(150);
+  // turn on all lights to normal
+  setLights();
+  delay(300);
+  // turn off all lights
+  setLights(currentBrightness, 0, 0, 0);
+  delay(150);
+  // turn on all lights to normal
+  setLights();
+  delay(300);
+  // turn off all lights
+  setLights(currentBrightness, 0, 0, 0);
+  delay(150);
+  // turn on all lights to normal
+  setLights();
+  delay(300);
+  // turn off all lights
+  setLights(currentBrightness, 0, 0, 0);
+  delay(150);
+  // turn on all lights to normal
+  setLights();
 }
 
 void loop() {
+  // if not in normal mode, check idle timer
+  if (mode != 0) {
+    // get time now
+    unsigned long now = millis();
+    // has the user been idle in the settings menu longer than 10 seconds?
+    if (now > 10 * 1000 && now - 10 * 1000 > idleTimer) {
+      // user is idle - exit settings mode
+      exitSettings();
+    }
+  }
   // was the mode changed?
   if (lastMode != mode) {
     // mode was changed
-    // was the last mode adjust brightness?
-    if (lastMode == 1) {
+    if (lastMode == 0) {
+      // was the last mode normal running?
+      // calculate something dimmer than current brightness
+      float brightness = currentBrightness * 0.5;
+      // dim all for feedback that we editing brightness
+      setLights(brightness, redValue, greenValue, blueValue);
+      delay(300);
+      setLights();
+      delay(150);
+      setLights(brightness, redValue, greenValue, blueValue);
+      delay(300);
+      setLights();
+    } else if (lastMode == 1) {
+      // was the last mode adjust brightness?
       // update max brightness setting in EEPROM
       writeI2CByte(0, currentBrightness);
       // blink red for feedback that we are now editing red
@@ -177,77 +236,91 @@ void loop() {
     } else if (lastMode == 4) {
       // update blue value
       writeI2CByte(3, blueValue);
-      // blink all for feedback that we are done editing
-      setLights(currentBrightness, 0, 0, 0);
-      delay(150);
-      setLights();
-      delay(300);
-      setLights(currentBrightness, 0, 0, 0);
-      delay(150);
-      setLights();
-      delay(300);
-      setLights(currentBrightness, 0, 0, 0);
-      delay(150);
-      setLights();
-      delay(300);
-      setLights(currentBrightness, 0, 0, 0);
-      delay(150);
-      setLights();
+      exitSettings();
     }
     // update lastMode to the current one
     lastMode = mode;
   }
   // check the mode
   if (mode == 0) {
-    // normal mode
+    // normal mode - lights show using values in memory
     setLights();
   } else if (mode == 1) {
-    // adjust brightness
+    // adjust brightness mode
     // set rotary value to the value of current max brightness
     rotaryValue = currentBrightness;
     // set max rotary size
     rotaryMax = 255;
+    rotaryMin = 3;
     // check rotary position
     readRotary();
+    // did we reach max value just now?
+    if (currentBrightness < 255 && rotaryValue == 255) {
+      // flash only red to feedback that red is at max value
+      setLights(currentBrightness, 0, 0, 0);
+      delay(250);
+    }
     // set maxBright to rotary value
     currentBrightness = rotaryValue;
     setLights();
   } else if (mode == 2) {
-    // adjust red
+    // adjust red mode
     // delay(100);
     // set rotary value to the value of current color index
     rotaryValue = redValue;
     // set max rotary value
     // rotaryMax = colorMultipliers;
     rotaryMax = 255;
+    rotaryMin = 0;
     // check rotary position
     readRotary();
+    // did we reach max value just now?
+    if (redValue < 255 && rotaryValue == 255) {
+      // flash only red to feedback that red is at max value
+      setLights(currentBrightness, 255, 0, 0);
+      delay(250);
+    }
     // set red color value from rotary value
     redValue = rotaryValue;
+    // was red set to the max value?
     // update lights
     setLights();
   } else if (mode == 3) {
-    // adjust green
+    // adjust green mode
     // set rotary value to the value of current color index
     rotaryValue = greenValue;
     // set max rotary value
     // rotaryMax = colorMultipliers;
     rotaryMax = 255;
+    rotaryMin = 0;
     // check rotary position
     readRotary();
+    // did we reach max value just now?
+    if (greenValue < 255 && rotaryValue == 255) {
+      // flash only green to feedback that green is at max value
+      setLights(currentBrightness, 0, 255, 0);
+      delay(250);
+    }
     // set green color value to rotary value
     greenValue = rotaryValue;
     // update lights
     setLights();
   } else if (mode == 4) {
-    // adjust blue
+    // adjust blue mode
     // set rotary value to the value of current color index
     rotaryValue = blueValue;
     // set max rotary value
     // rotaryMax = colorMultipliers;
     rotaryMax = 255;
+    rotaryMin = 0;
     // check rotary position
     readRotary();
+    // did we reach max value just now?
+    if (blueValue < 255 && rotaryValue == 255) {
+      // flash only blue to feedback that blue is at max value
+      setLights(currentBrightness, 0, 0, 255);
+      delay(250);
+    }
     // set blue color value to rotary value
     blueValue = rotaryValue;
     // update lights
@@ -259,6 +332,7 @@ void loop() {
   }
 }
 
+// set light brightness, red, green, and blue values
 void setLights (int h, int r, int g, int b) {
   // set LED values
   float brightness = (h / 255.0);
@@ -267,66 +341,55 @@ void setLights (int h, int r, int g, int b) {
   analogWrite(blueLedPin, brightness * b);
 }
 
+// set light brightness only
+void setLights (int b) {
+  setLights(b, redValue, greenValue, blueValue);
+}
+
+// set lights to values in memory
 void setLights () {
-  // set LED values
-  float brightness = (currentBrightness / 255.0);
-  analogWrite(redLedPin, brightness * redValue);
-  analogWrite(greenLedPin, brightness * greenValue);
-  analogWrite(blueLedPin, brightness * blueValue);
+  setLights(currentBrightness);
 }
 
+// gradually bring up lights to full brightness, over 1 second or so
 void openDoor () {
-  for(int i=0; i<maxBright; i++){
-    analogWrite(redLedPin, i * redMultiplier);
-    analogWrite(greenLedPin, i * greenMultiplier);
-    analogWrite(blueLedPin, i * blueMultiplier);
-    delay(5);
+  // int brightnessStep = 1000.0 / currentBrightness;
+  for (int i = 0; i < currentBrightness; i++) {
+    setLights(i);
+    delay(1000 / currentBrightness);
   }
 }
 
+// gradually dim the lights and then turn them off
 void closeDoor () {
-  for(int i=maxBright; i>0; i--){
-    analogWrite(redLedPin, i * redMultiplier);
-    analogWrite(greenLedPin, i * greenMultiplier);
-    analogWrite(blueLedPin, i * blueMultiplier);
-    delay(5);
+  for (int i = currentBrightness; i > 0; i--) {
+    setLights(i);
+    delay(1000 / currentBrightness);
   }
-
-  // make sure they are all off
+  // turn the lights all the way off
   allOff();
 }
 
+// turn off all lights
 void allOff () {
-  analogWrite(redLedPin, 0);
-  analogWrite(greenLedPin, 0);
-  analogWrite(blueLedPin, 0);
+  setLights(0);
 }
 
-void fadeLed (int pin) {
-  //Fading the LED
-  for(int i=0; i<255; i++){
-    analogWrite(pin, i);
-    delay(5);
-  }
-  for(int i=255; i>0; i--){
-    analogWrite(pin, i);
-    delay(5);
-  }
-}
-
-void readRotary( ) {
+void readRotary () {
   // gestion position
   rotaryClockState = digitalRead(rotaryClockPin);
   // did rotary dial move?
   if ((rotaryClockLastState == LOW) && (rotaryClockState == HIGH)) {
-    //rotary moving
+    // rotary has input value
+    // reset the idle timer
+    idleTimer = millis();
     // forward or backward?
     if (digitalRead(rotaryDirectionPin) == HIGH) {
       // backward/left/counter-clockwise
       // Serial.println("rotary dial left");
       rotaryValue -= rotaryUnits;
-      if ( rotaryValue < 0 ) {
-        rotaryValue = 0;
+      if ( rotaryValue < rotaryMin ) {
+        rotaryValue = rotaryMin;
       }
     } else {
       // forward/right/clockwise
